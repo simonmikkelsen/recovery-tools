@@ -1,3 +1,5 @@
 assignments/
 assets/
 venv/
+__pycache__/
+test/
