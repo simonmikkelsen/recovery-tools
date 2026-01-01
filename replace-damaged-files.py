@@ -1,14 +1,22 @@
+#replace-damaged-files-2.py: A version of the 1st that actually works.
 """
-Python3 script that takes a folder and a filesizes.txt file as argument.
+Make a python3 script that takes a folder and a number of files we here call filesizes.txt.
+
 filesizes.txt has the format <filesize in bytes> <relative path>
 
-The script finds all files in the folder tree named *.damaged (or other specified extension).
-If the file size matches the size of a file in filesizes.txt, the file is renamed to remove the .damaged extension and
-the contents of the file in .damaged file is used to replace the contents of the original file.
+When the script loads, it must create a single mapping from the different file sizes from the given filesizes.txt files to sets of relative paths.
+
+After load the script must look at alle files named *.damaged (or other specified extension) in the given folder tree.
+
+If a .damaged file has a size that matches a file size in the mapping, the script must rename the .damaged file to remove the .damaged extension,
+given that the file extension (after removing .damaged) matches the original file extension from filesizes.txt. Also accept file extensions that
+are known equivalents, e.g. .jpg and .jpeg, see the table and examples later in this docstring.
 
 Make a help section, verbose, dry-run options and extension option.
 Usage: python3 replace-damaged-files.py <directory> <filesizes.txt ...> [--extension .damaged] [-v|--verbose] [-n|--dry-run]
 The script processes all files in the specified directory and its subdirectories.
+
+In verbose mode print to stdout and print: All files where size matched but extension did not match, and all files that were renamed.
 
 Only replace files with the same extension, when the .damaged extension is removed. Note that some files may have multiple valid extensions.
 E.g.:
@@ -37,10 +45,10 @@ from __future__ import annotations
 
 import argparse
 import os
+import shutil
 import sys
-from dataclasses import dataclass
 from pathlib import Path
-from typing import Dict, Iterable, List, Optional, Tuple
+from typing import Dict, Iterable, Optional, Set, Tuple
 
 
 def eprint(message: str) -> None:
@@ -67,11 +75,11 @@ EXTENSION_EQUIVALENTS: Dict[str, Tuple[str, ...]] = {
 
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(
-        description="Replace original files using *.damaged content based on filesizes tables."
+        description="Replace *.damaged files based on size tables and extension matching."
     )
     parser.add_argument(
         "directory",
-        help="Base directory to scan for damaged files and originals.",
+        help="Base directory to scan for damaged files.",
     )
     parser.add_argument(
         "filesizes",
@@ -87,7 +95,7 @@ def parse_args() -> argparse.Namespace:
         "-v",
         "--verbose",
         action="store_true",
-        help="Enable verbose output.",
+        help="Print size/extension mismatches and renames.",
     )
     parser.add_argument(
         "-n",
@@ -110,81 +118,36 @@ def normalize_relative_path(rel_path: str) -> Optional[Path]:
     return path
 
 
-def load_size_table(table_path: Path) -> Dict[Path, int]:
-    sizes: Dict[Path, int] = {}
-    try:
-        with table_path.open("r", encoding="utf-8") as handle:
-            for line_no, line in enumerate(handle, 1):
-                stripped = line.strip()
-                if not stripped or stripped.startswith("#"):
-                    continue
-                parts = stripped.split(maxsplit=1)
-                if len(parts) != 2:
-                    eprint(f"[warn] {table_path}:{line_no}: expected '<size> <relative path>'")
-                    continue
-                size_text, rel_path = parts
-                try:
-                    size = int(size_text)
-                except ValueError:
-                    eprint(f"[warn] {table_path}:{line_no}: invalid size '{size_text}'")
-                    continue
-                normalized = normalize_relative_path(rel_path)
-                if normalized is None:
-                    eprint(f"[warn] {table_path}:{line_no}: invalid relative path: {rel_path}")
-                    continue
-                if normalized in sizes and sizes[normalized] != size:
-                    eprint(
-                        f"[warn] {table_path}:{line_no}: conflicting sizes for {normalized}"
-                    )
-                sizes[normalized] = size
-    except OSError as exc:
-        eprint(f"[error] Failed to read {table_path}: {exc}")
-    return sizes
-
-
-@dataclass
-class SizeTable:
-    path: Path
-    base_dir: Path
-    sizes: Dict[Path, int]
-
-
-def equivalent_extensions(extension: str) -> List[str]:
-    if not extension:
-        return [""]
-    ext_lower = extension.lower()
-    group = EXTENSION_EQUIVALENTS.get(ext_lower)
-    if not group:
-        return [ext_lower]
-    if group[0] == ext_lower:
-        return list(group)
-    return [ext_lower] + [item for item in group if item != ext_lower]
-
-
-def candidate_relative_paths(rel_path: Path) -> List[Path]:
-    suffix = rel_path.suffix
-    suffix_lower = suffix.lower()
-    variants = equivalent_extensions(suffix_lower)
-    candidates: List[Path] = []
-    seen: set[Path] = set()
-
-    for variant in variants:
-        if variant == suffix_lower:
-            candidate = rel_path
-            if candidate not in seen:
-                candidates.append(candidate)
-                seen.add(candidate)
-            if suffix != variant:
-                candidate = rel_path.with_suffix(variant)
-                if candidate not in seen:
-                    candidates.append(candidate)
-                    seen.add(candidate)
-            continue
-        candidate = rel_path.with_suffix(variant)
-        if candidate not in seen:
-            candidates.append(candidate)
-            seen.add(candidate)
-    return candidates
+def load_size_mapping(table_paths: Iterable[Path]) -> Dict[int, Set[Path]]:
+    mapping: Dict[int, Set[Path]] = {}
+    for table_path in table_paths:
+        try:
+            with table_path.open("r", encoding="utf-8") as handle:
+                for line_no, line in enumerate(handle, 1):
+                    stripped = line.strip()
+                    if not stripped or stripped.startswith("#"):
+                        continue
+                    parts = stripped.split(maxsplit=1)
+                    if len(parts) != 2:
+                        eprint(
+                            f"[warn] {table_path}:{line_no}: expected '<size> <relative path>'"
+                        )
+                        continue
+                    size_text, rel_path = parts
+                    try:
+                        size = int(size_text)
+                    except ValueError:
+                        eprint(f"[warn] {table_path}:{line_no}: invalid size '{size_text}'")
+                        continue
+                    normalized = normalize_relative_path(rel_path)
+                    if normalized is None:
+                        eprint(f"[warn] {table_path}:{line_no}: invalid relative path: {rel_path}")
+                        continue
+                    candidate_path = table_path.parent / normalized
+                    mapping.setdefault(size, set()).add(candidate_path)
+        except OSError as exc:
+            eprint(f"[error] Failed to read {table_path}: {exc}")
+    return mapping
 
 
 def iter_damaged_files(base_path: Path, extension: str) -> Iterable[Path]:
@@ -203,9 +166,23 @@ def remove_extension(path: Path, extension: str) -> Path:
     return path
 
 
+def equivalent_extensions(extension: str) -> Set[str]:
+    if not extension:
+        return {""}
+    ext_lower = extension.lower()
+    group = EXTENSION_EQUIVALENTS.get(ext_lower)
+    if not group:
+        return {ext_lower}
+    return set(group)
+
+
+def extensions_compatible(ext_a: str, ext_b: str) -> bool:
+    return ext_b.lower() in equivalent_extensions(ext_a)
+
+
 def process_damaged_files(
     base_path: Path,
-    size_tables: List[SizeTable],
+    size_mapping: Dict[int, Set[Path]],
     extension: str,
     dry_run: bool,
     verbose: bool,
@@ -218,49 +195,52 @@ def process_damaged_files(
             eprint(f"[warn] Failed to stat {damaged_path}: {exc}")
             continue
 
+        candidates = size_mapping.get(damaged_size)
+        if not candidates:
+            continue
+
         target_path = remove_extension(damaged_path, extension)
-        matched = False
-        for table in size_tables:
-            try:
-                rel_target = target_path.relative_to(table.base_dir)
-            except ValueError:
-                continue
+        target_ext = target_path.suffix.lower()
+        matched_extension = False
+        matched_candidate = None
+        matched_candidates = [] if dry_run else None
 
-            for candidate in candidate_relative_paths(rel_target):
-                expected_size = table.sizes.get(candidate)
-                if expected_size is None:
-                    continue
-                if expected_size != damaged_size:
-                    if verbose:
-                        eprint(
-                            f"[info] Size mismatch for {damaged_path} in {table.path}: "
-                            f"expected {expected_size}, found {damaged_size}"
-                        )
-                    continue
-                target_path = table.base_dir / candidate
-                matched = True
-                break
-            if not matched:
+        for candidate in candidates:
+            candidate_path = candidate
+            if not extensions_compatible(target_ext, candidate_path.suffix.lower()):
                 continue
-
-            matched = True
+            matched_extension = True
             if dry_run:
-                print(f"[DRY RUN] {damaged_path} -> {target_path}")
-                replaced += 1
-                break
-
-            try:
-                target_path.parent.mkdir(parents=True, exist_ok=True)
-                damaged_path.replace(target_path)
-                replaced += 1
-                if verbose:
-                    eprint(f"[info] Replaced {target_path} using {damaged_path}")
-            except OSError as exc:
-                eprint(f"[error] Failed to replace {target_path} using {damaged_path}: {exc}")
+                matched_candidates.append(candidate_path)
+                continue
+            matched_candidate = candidate_path
             break
 
-        if not matched and verbose:
-            eprint(f"[info] No size table match for {damaged_path}")
+        if not matched_extension:
+            if verbose:
+                print(f"[info] Size match but extension mismatch: {damaged_path} (matched candidate: {matched_candidate})")
+            continue
+
+        if dry_run:
+            print()
+            print(f"DAM: {damaged_path}")
+            for candidate_path in matched_candidates:
+                if not candidate_path.exists():
+                    continue
+                print(f"CAN: {candidate_path}")
+            replaced += 1
+            continue
+
+        try:
+            target_path.parent.mkdir(parents=True, exist_ok=True)
+            shutil.copyfile(matched_candidate, damaged_path)
+            damaged_path.replace(target_path)
+            replaced += 1
+            if verbose:
+                print(f"[info] Replaced {damaged_path} -> {target_path}")
+        except OSError as exc:
+            eprint(f"[error] Failed to replace {target_path} using {damaged_path}: {exc}")
+
     return replaced
 
 
@@ -277,23 +257,14 @@ def main() -> int:
             eprint(f"filesizes.txt not found: {table_path}")
             return 1
 
-    size_tables: List[SizeTable] = []
-    for table_path in table_paths:
-        sizes = load_size_table(table_path)
-        if not sizes:
-            eprint(f"[warn] Size table is empty or invalid: {table_path}")
-            continue
-        size_tables.append(
-            SizeTable(path=table_path, base_dir=table_path.parent, sizes=sizes)
-        )
-
-    if not size_tables:
-        eprint("[warn] No valid size tables loaded; nothing to do.")
+    size_mapping = load_size_mapping(table_paths)
+    if not size_mapping:
+        eprint("[warn] Size mapping is empty or invalid; nothing to do.")
         return 0
 
     process_damaged_files(
         base_path=base_path,
-        size_tables=size_tables,
+        size_mapping=size_mapping,
         extension=args.extension,
         dry_run=args.dry_run,
         verbose=args.verbose,

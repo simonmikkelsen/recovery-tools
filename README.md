@@ -1,21 +1,40 @@
 # Recovery Tools
 
-Helper scripts for working with files recovered from deep disk scans. They avoid trusting filenames or filesystem timestamps and instead inspect file contents.
+Helper scripts for working with files recovered from deep disk scans. They avoid trusting filenames or filesystem
+timestamps and instead inspect file contents.
+
+These scripts were developed when a family member quick formatted a harddrive. I used several recovery tools in differnt
+modes to get the files back and ended up with several large collections that should be merged into one.
+These script are made to automate as much as that process as possible.
+
+The scripts were developed and tested on real data. I may not have hit all corner cases and some may come from 
+recovery tools I have not used.
+Start by using the dry run modes and veryfy the result before deleting files.
+
+These scripts were mostly developed using AI but verified by a human. When I found errors they were corrected
+and in several cases the AI chose suboptimal algorithms where I had to describe the algorithm. I did not make
+an efford to ensure good gode structure, although all scripts are so small that is less of an issue.
 
 ## Process of recovering files
 
 - Use several recovery tools like photorec (free software) and DiskDrill (commercial) to crate several folders
    each with a collection of files in various states.
 
-- Use rename-zero-files.py to rename files only containing binary zeros to .damaged.
+- Fastest path
+  - Use total-meta-collector.py that will do all the things, that the scripts in the stepwise
+    path will do. It will just be a lot faster because each file is only read once and not multiple
+    times.
 
-- Use mkfilesize-tables.py to make files named filesizes. These can be used by replace-damaged-files.py to
-  make a good guess on the contents of damaged files.
+- Stepwise path
+  - Use rename-zero-files.py to rename files only containing binary zeros to .damaged.
 
-- Use replace-damaged-files.py to either automatically replaced damaged files with good candidates
-  or generate a list so you do it manually.
+  - Use mkfilesize-tables.py to make files named filesizes. These can be used by replace-damaged-files.py to
+    make a good guess on the contents of damaged files.
 
-- Use mkhashes.py to creates a hashes.txt files in the root of each collection.
+  - Use replace-damaged-files.py to either automatically replaced damaged files with good candidates
+    or generate a list so you do it manually.
+
+  - Use mkhashes.py to creates a hashes.txt files in the root of each collection.
 
 - Use deduplicate.py to delete files from lesser important collections if they exists in more important collections.
   A more important collection may be one that has many files names recovered, wile a lesser imprtant collection is
