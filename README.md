@@ -15,6 +15,9 @@ These scripts were mostly developed using AI but verified by a human. When I fou
 and in several cases the AI chose suboptimal algorithms where I had to describe the algorithm. I did not make
 an efford to ensure good gode structure, although all scripts are so small that is less of an issue.
 
+Most scripts do not need the `requirements.txt` or a venv. That is the scripts for verifying and renaming image
+and doc files that need those.
+
 ## Process of recovering files
 
 - Use several recovery tools like photorec (free software) and DiskDrill (commercial) to crate several folders
