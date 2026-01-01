@@ -2,6 +2,34 @@
 
 Helper scripts for working with files recovered from deep disk scans. They avoid trusting filenames or filesystem timestamps and instead inspect file contents.
 
+## Process of recovering files
+
+- Use several recovery tools like photorec (free software) and DiskDrill (commercial) to crate several folders
+   each with a collection of files in various states.
+
+- Use rename-zero-files.py to rename files only containing binary zeros to .damaged.
+
+- Use mkfilesize-tables.py to make files named filesizes. These can be used by replace-damaged-files.py to
+  make a good guess on the contents of damaged files.
+
+- Use replace-damaged-files.py to either automatically replaced damaged files with good candidates
+  or generate a list so you do it manually.
+
+- Use mkhashes.py to creates a hashes.txt files in the root of each collection.
+
+- Use deduplicate.py to delete files from lesser important collections if they exists in more important collections.
+  A more important collection may be one that has many files names recovered, wile a lesser imprtant collection is
+  one with a lot of contents but no file names recovered.
+
+- Manually try to combine the different collections, by taking files from collections without proper file names
+  and placing them in the final collection. .damaged files may indicate the names and size of a file, which may
+  make it easier to place a file without a proper file name in its exact file name.
+  This process is highly manual and require some human memory and guess work.
+
+- Use tools like rename-images.py and rename-doc.py to rename certain file types to names that provides some
+  information and organization, without being the original names.
+   
+
 ## rename-images.py
 Renames/moves recovered images and videos based on creation timestamps read from metadata via PyExifTool.
 
@@ -51,6 +79,30 @@ Examples:
 Behavior:
 - Marks files invalid if text extraction fails even when basic structure looks OK.
 - Optional summary with `--summary`.
+
+## extract-ddscan.py
+Extracts files from a raw disk image using a ddscan SQLite database.
+This script did never work properly, as the Disk Drill database was not
+fully reverse engineered.
+
+Examples:
+- Extract everything:  
+  `python3 extract-ddscan.py -i disk.img -d ddscan.db -o out_dir`
+- Limit to 50 files and filter with a WHERE clause:  
+  `python3 extract-ddscan.py -i disk.img -d ddscan.db -o out_dir -n 50 -w "size > 0" -v`
+- Preview without writing files:  
+  `python3 extract-ddscan.py -i disk.img -d ddscan.db -o out_dir --dry-run`
+
+Behavior:
+- Reads `block` and `size` from `files` table; offset = `block * 512`.
+- De-dupes entries sharing the same `block/size` pair.
+- Saves to `<output>/<path-dir>/<extension>/<name>` using `paths.path` for the directory and the filename extension (or `no_ext`).
+- Preserves modification time from the `date` field when present.
+
+## hexless.py
+
+Program that shows a files contents in hexa decimal format. Is good to see if a file contains only binary
+zeros or is damaged in any way.
 
 ## Dependencies
 See `requirements.txt` and install with:  
