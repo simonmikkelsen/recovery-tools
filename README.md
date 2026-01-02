@@ -8,7 +8,7 @@ modes to get the files back and ended up with several large collections that sho
 These script are made to automate as much as that process as possible.
 
 The scripts were developed and tested on real data. I may not have hit all corner cases and some may come from 
-recovery tools I have not used.
+recovery tools I have not used. The scripts are NOT tested on Windows or Mac but should work.
 Start by using the dry run modes and veryfy the result before deleting files.
 
 These scripts were mostly developed using AI but verified by a human. When I found errors they were corrected
